@@ -148,6 +148,68 @@ def main() -> int:
     nref = check_recipes("refine", "Refinery")
     ncook = check_recipes("cook", "NutrientProcessor")
 
+    # -- recharge ------------------------------------------------------------
+    rc = core["recharge"]
+    raw_rc = json.loads((RAW / "Recharge.json").read_text(encoding="utf-8"))
+    expected_rc = []
+    for r in raw_rc:
+        if r.get("Id") not in src_by_id:
+            continue
+        fuels = [(c["Id"], num(c.get("Value")))
+                 for c in (r.get("ChargeBy") or [])
+                 if c.get("Id") in src_by_id and num(c.get("Value"))]
+        if fuels:
+            expected_rc.append((r["Id"], num(r.get("TotalChargeAmount")), fuels))
+    check(len(rc["item"]) == len(expected_rc),
+          f"recharge: {len(rc['item'])} encoded vs {len(expected_rc)} expected")
+    for k, (iid, total, fuels) in enumerate(expected_rc):
+        if k >= len(rc["item"]):
+            break
+        check(item_id(rc["item"][k]) == iid, f"recharge[{k}]: item mismatch")
+        check(rc["total"][k] == total, f"recharge[{k}]: total mismatch")
+        a, b = rc["off"][k], rc["off"][k + 1]
+        got = [(item_id(rc["fuel"][x]), rc["val"][x]) for x in range(a, b)]
+        check(got == fuels, f"recharge[{k}]: fuels {got} != {fuels}")
+
+    # -- research trees ------------------------------------------------------
+    tt = core["techtree"]
+    raw_tt = json.loads((RAW / "TechTree.json").read_text(encoding="utf-8"))
+
+    # Replay the same walk (and the same skip rule) the encoder used.
+    expected_nodes = []
+
+    def walk(node, root):
+        nid = node.get("Id") or ""
+        label = node.get("Name") or None
+        known = nid in src_by_id
+        if known or label is not None:
+            expected_nodes.append(
+                (nid if known else None, None if known else label,
+                 node.get("CostType"), root))
+        for c in (node.get("Children") or []):
+            walk(c, root)
+
+    for root, t in enumerate(raw_tt):
+        for top in (t.get("Trees") or []):
+            walk(top, root)
+
+    check(len(tt["names"]) == len(raw_tt),
+          f"techtree: {len(tt['names'])} trees vs {len(raw_tt)}")
+    check(len(tt["parent"]) == len(expected_nodes),
+          f"techtree: {len(tt['parent'])} nodes vs {len(expected_nodes)} expected")
+    costs = core["dicts"]["treeCost"]
+    for k, (iid, label, cost, root) in enumerate(expected_nodes):
+        if k >= len(tt["parent"]):
+            break
+        got_item = item_id(tt["item"][k]) if tt["item"][k] >= 0 else None
+        check(got_item == iid, f"techtree[{k}]: item {got_item} != {iid}")
+        check(tt["label"][k] == label, f"techtree[{k}]: label mismatch")
+        got_cost = costs[tt["cost"][k]] if tt["cost"][k] >= 0 else None
+        check(got_cost == (cost or None), f"techtree[{k}]: cost mismatch")
+        check(tt["root"][k] == root, f"techtree[{k}]: root mismatch")
+        p = tt["parent"][k]
+        check(p == -1 or 0 <= p < k, f"techtree[{k}]: parent {p} out of range")
+
     # -- report --------------------------------------------------------------
     if errors:
         print(f"FAILED - {len(errors)} problem(s):")
@@ -161,6 +223,8 @@ def main() -> int:
     print(f"  {compared} items round-tripped (all fields + descriptions)")
     print(f"  {craft_checked} craft ingredients")
     print(f"  {nref} refiner + {ncook} cooking recipes")
+    print(f"  {len(expected_rc)} recharge entries")
+    print(f"  {len(tt['names'])} research trees, {len(expected_nodes)} nodes")
     return 0
 
 

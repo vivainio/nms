@@ -247,6 +247,77 @@ def main() -> int:
     refine = recipes("Refinery", "ref")
     cook = recipes("NutrientProcessor", "nut")
 
+    # ---- recharge: which items refuel a technology ------------------------
+    # CSR again: for tech at slot k, fuels[off[k]:off[k+1]] with the charge each
+    # unit restores. `total` is the technology's full charge capacity, so
+    # ceil(total / value) is how many units a full refill takes.
+    rc_item, rc_total, rc_off, rc_fuel, rc_val = [], [], [0], [], []
+    rc_dropped = 0
+    for r in load("Recharge"):
+        j = index_of.get(r.get("Id"))
+        if j is None:
+            rc_dropped += 1
+            continue
+        entries = [(index_of.get(c.get("Id")), num(c.get("Value")))
+                   for c in (r.get("ChargeBy") or [])]
+        entries = [(f, v) for f, v in entries if f is not None and v]
+        if not entries:
+            rc_dropped += 1
+            continue
+        rc_item.append(j)
+        rc_total.append(num(r.get("TotalChargeAmount")))
+        for f, v in entries:
+            rc_fuel.append(f)
+            rc_val.append(v)
+        rc_off.append(len(rc_fuel))
+    if rc_dropped:
+        print(f"  Recharge: dropped {rc_dropped} unresolvable row(s)")
+    recharge = {"item": rc_item, "total": rc_total, "off": rc_off,
+                "fuel": rc_fuel, "val": rc_val}
+
+    # ---- research trees ----------------------------------------------------
+    # Nodes are either a category header (own name, id like "tree1-subTree2") or
+    # an item (name is null, id is an item id). Flatten to parallel arrays:
+    # parent[] indexes into the same arrays, -1 for a root.
+    t_parent, t_item, t_label, t_root = [], [], [], []
+    d_treecost = Dict_()
+    t_cost = []
+    unresolved = []
+
+    def add_node(node, parent: int, root: int) -> None:
+        nid = node.get("Id") or ""
+        j = index_of.get(nid)
+        # One node upstream (tree14-subTree1) has Name="" - treat a blank name
+        # as no name, so it takes the skip path below instead of rendering an
+        # empty heading.
+        label = node.get("Name") or None
+        if j is None and label is None:
+            # An item node pointing at something we did not import - skip the
+            # node but keep walking so its children stay attached to the tree.
+            unresolved.append(nid)
+            me = parent
+        else:
+            me = len(t_parent)
+            t_parent.append(parent)
+            t_item.append(j if j is not None else -1)
+            t_label.append(label if j is None else None)
+            t_cost.append(d_treecost(node.get("CostType")))
+            t_root.append(root)
+        for c in (node.get("Children") or []):
+            add_node(c, me, root)
+
+    trees = []
+    for t in load("TechTree"):
+        root = len(trees)
+        trees.append(t.get("Name") or t.get("Id"))
+        for top in (t.get("Trees") or []):
+            add_node(top, -1, root)
+    if unresolved:
+        print(f"  TechTree: {len(unresolved)} node(s) reference unknown items")
+
+    techtree = {"names": trees, "parent": t_parent, "item": t_item,
+                "label": t_label, "cost": t_cost, "root": t_root}
+
     # ---- emit --------------------------------------------------------------
     core = {
         "meta": {
@@ -268,6 +339,7 @@ def main() -> int:
             "idPrefix": d_idpre.values,
             "iconDir": d_icondir.values,
             "op": d_op.values,
+            "treeCost": d_treecost.values,
         },
         "items": col,
         "idLiteral": id_literal,
@@ -275,6 +347,8 @@ def main() -> int:
         "craft": {"off": craft_off, "it": craft_it, "q": craft_q},
         "refine": refine,
         "cook": cook,
+        "recharge": recharge,
+        "techtree": techtree,
     }
 
     OUT.mkdir(parents=True, exist_ok=True)
@@ -287,6 +361,9 @@ def main() -> int:
     print(f"items      {n} ({craftable} craftable)")
     print(f"refine     {len(refine['out'])}")
     print(f"cook       {len(cook['out'])}")
+    print(f"recharge   {len(rc_item)} technologies, {len(rc_fuel)} fuel entries")
+    print(f"techtree   {len(trees)} trees, {len(t_parent)} nodes "
+          f"({sum(1 for x in t_item if x >= 0)} linked to items)")
     print(f"dicts      group={len(d_group.values)} colour={len(d_colour.values)} "
           f"op={len(d_op.values)}")
     print(f"escapes    id={len(id_literal)} icon={len(icon_literal)}")

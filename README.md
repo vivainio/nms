@@ -5,11 +5,17 @@ Static site, no backend, no framework.
 
 ## Features
 
+- **Category landing** — 13 categories with item and craftable counts, so
+  building blueprints (882 of them) and technology are one tap away.
 - **Browse + search** all 3,769 items, filterable by category.
 - **Item detail** with the full crafting tree expanded down to base materials,
   plus a summed "total base materials" list.
 - **Reverse lookup** — every recipe that consumes the item you're looking at.
 - **Refiner and cooking tables** with all 357 refiner and 1,321 cooking recipes.
+- **Recharge info** — what refuels a technology, how much charge each unit
+  gives, and how many units a full refill takes; plus the reverse ("what does
+  Sodium recharge?").
+- **Research trees** — 10 unlock trees, 242 nodes, each linking to its item.
 
 ## Getting started
 

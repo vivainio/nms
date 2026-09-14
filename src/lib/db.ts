@@ -25,6 +25,7 @@ interface Dicts {
   idPrefix: string[];
   iconDir: string[];
   op: string[];
+  treeCost: string[];
 }
 
 interface Columns {
@@ -58,6 +59,50 @@ export interface Core {
   craft: { off: number[]; it: number[]; q: number[] };
   refine: RecipeTable;
   cook: RecipeTable;
+  recharge: RechargeTable;
+  techtree: TechTreeTable;
+}
+
+interface RechargeTable {
+  item: number[];
+  total: number[];
+  off: number[];
+  fuel: number[];
+  val: number[];
+}
+
+interface TechTreeTable {
+  names: string[];
+  parent: number[];
+  item: number[];
+  label: (string | null)[];
+  cost: number[];
+  root: number[];
+}
+
+/** One fuel option for a rechargeable technology. */
+export interface Fuel {
+  idx: number;
+  /** Charge restored per unit. */
+  value: number;
+  /** Units needed for a full refill. */
+  unitsForFull: number;
+}
+
+export interface RechargeInfo {
+  /** Full charge capacity of the technology. */
+  total: number;
+  fuels: Fuel[];
+}
+
+/** A node in a research tree: either an item or a category heading. */
+export interface TreeEntry {
+  /** Item index, or -1 for a category heading. */
+  idx: number;
+  /** Heading text; null when this node is an item. */
+  label: string | null;
+  costType: string | null;
+  children: TreeEntry[];
 }
 
 /** An ingredient or output: item index + quantity. */
@@ -118,6 +163,14 @@ export class Db {
   private readonly craftQ: Int32Array;
 
   private readonly tables: Record<RecipeKind, RecipeTable>;
+  private readonly rc: RechargeTable;
+  private readonly tt: TechTreeTable;
+  /** item index -> slot in the recharge table */
+  private readonly rechargeOf = new Map<number, number>();
+  /** item index -> recharge slots this item can refuel */
+  private readonly fuelFor: Map<number, number[]> = new Map();
+  /** root tree index -> its top-level entries, built on demand */
+  private readonly treeCache = new Map<number, TreeEntry[]>();
 
   /** id string -> item index */
   private readonly byId = new Map<string, number>();
@@ -153,8 +206,22 @@ export class Db {
     this.craftQ = i32(core.craft.q);
 
     this.tables = { refine: core.refine, cook: core.cook };
+    this.rc = core.recharge;
+    this.tt = core.techtree;
 
     for (let i = 0; i < this.count; i++) this.byId.set(this.id(i), i);
+
+    // Recharge lookups, both directions: what fuels this tech, and what tech
+    // does this item fuel.
+    for (let k = 0; k < this.rc.item.length; k++) {
+      this.rechargeOf.set(this.rc.item[k], k);
+      for (let x = this.rc.off[k]; x < this.rc.off[k + 1]; x++) {
+        const f = this.rc.fuel[x];
+        const list = this.fuelFor.get(f);
+        if (list) list.push(k);
+        else this.fuelFor.set(f, [k]);
+      }
+    }
 
     // Reverse index: ingredient -> items crafted from it.
     this.craftUsers = Array.from({ length: this.count }, () => [] as number[]);
@@ -297,8 +364,90 @@ export class Db {
       this.asInput.refine[i].length > 0 ||
       this.asOutput.refine[i].length > 0 ||
       this.asInput.cook[i].length > 0 ||
-      this.asOutput.cook[i].length > 0
+      this.asOutput.cook[i].length > 0 ||
+      this.rechargeOf.has(i) ||
+      this.fuelFor.has(i)
     );
+  }
+
+  // ---- recharge ----------------------------------------------------------
+
+  /** How this technology refuels, or null if it is not rechargeable. */
+  recharge(i: number): RechargeInfo | null {
+    const k = this.rechargeOf.get(i);
+    if (k === undefined) return null;
+    const total = this.rc.total[k];
+    const fuels: Fuel[] = [];
+    for (let x = this.rc.off[k]; x < this.rc.off[k + 1]; x++) {
+      const value = this.rc.val[x];
+      fuels.push({
+        idx: this.rc.fuel[x],
+        value,
+        unitsForFull: value > 0 ? Math.ceil(total / value) : 0,
+      });
+    }
+    // Most charge per unit first - that is the one worth carrying.
+    fuels.sort((a, b) => b.value - a.value);
+    return { total, fuels };
+  }
+
+  /** Technologies this item can refuel, with the charge it gives each. */
+  rechargesWhat(i: number): { idx: number; value: number; total: number }[] {
+    const slots = this.fuelFor.get(i);
+    if (!slots) return [];
+    const out: { idx: number; value: number; total: number }[] = [];
+    for (const k of slots) {
+      for (let x = this.rc.off[k]; x < this.rc.off[k + 1]; x++) {
+        if (this.rc.fuel[x] === i) {
+          out.push({ idx: this.rc.item[k], value: this.rc.val[x],
+                     total: this.rc.total[k] });
+          break;
+        }
+      }
+    }
+    return out;
+  }
+
+  // ---- research trees ----------------------------------------------------
+
+  get treeNames(): string[] { return this.tt.names; }
+
+  /** Top-level entries of one research tree, as a nested structure. */
+  tree(root: number): TreeEntry[] {
+    const cached = this.treeCache.get(root);
+    if (cached) return cached;
+
+    const nodes: (TreeEntry | null)[] = new Array(this.tt.parent.length).fill(null);
+    const roots: TreeEntry[] = [];
+    const costs = this.d.treeCost;
+
+    for (let k = 0; k < this.tt.parent.length; k++) {
+      if (this.tt.root[k] !== root) continue;
+      const entry: TreeEntry = {
+        idx: this.tt.item[k],
+        label: this.tt.label[k],
+        costType: this.tt.cost[k] < 0 ? null : costs[this.tt.cost[k]],
+        children: [],
+      };
+      nodes[k] = entry;
+      const p = this.tt.parent[k];
+      // Nodes are emitted parent-before-child, so the parent already exists.
+      const parent = p >= 0 ? nodes[p] : null;
+      if (parent) parent.children.push(entry);
+      else roots.push(entry);
+    }
+
+    this.treeCache.set(root, roots);
+    return roots;
+  }
+
+  /** Research trees that contain this item, by root index. */
+  treesContaining(i: number): number[] {
+    const out = new Set<number>();
+    for (let k = 0; k < this.tt.item.length; k++) {
+      if (this.tt.item[k] === i) out.add(this.tt.root[k]);
+    }
+    return [...out];
   }
 
   // ---- descriptions (lazy) ----------------------------------------------

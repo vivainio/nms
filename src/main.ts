@@ -16,12 +16,14 @@ import { h, clear } from './lib/dom';
 import { renderBrowse, type BrowseState } from './views/browse';
 import { renderItem, renderNotFound } from './views/item';
 import { renderRecipeTable, type RecipeViewState } from './views/recipes';
+import { renderResearch } from './views/research';
 
 type Route =
   | { name: 'browse' }
   | { name: 'item'; id: string }
   | { name: 'refiner' }
-  | { name: 'cooking' };
+  | { name: 'cooking' }
+  | { name: 'research'; root: number | null };
 
 function parseRoute(hash: string): Route {
   const path = hash.replace(/^#\/?/, '');
@@ -30,6 +32,11 @@ function parseRoute(hash: string): Route {
   }
   if (path === 'refiner') return { name: 'refiner' };
   if (path === 'cooking') return { name: 'cooking' };
+  if (path === 'research') return { name: 'research', root: null };
+  if (path.startsWith('research/')) {
+    const n = Number.parseInt(path.slice(9), 10);
+    return { name: 'research', root: Number.isNaN(n) ? null : n };
+  }
   return { name: 'browse' };
 }
 
@@ -37,6 +44,7 @@ const TABS: { href: string; label: string; match: Route['name'] }[] = [
   { href: '#/', label: 'Items', match: 'browse' },
   { href: '#/refiner', label: 'Refiner', match: 'refiner' },
   { href: '#/cooking', label: 'Cooking', match: 'cooking' },
+  { href: '#/research/0', label: 'Research', match: 'research' },
 ];
 
 const PLACEHOLDER: Record<Route['name'], string> = {
@@ -44,6 +52,7 @@ const PLACEHOLDER: Record<Route['name'], string> = {
   item: 'Search items…',
   refiner: 'Filter refiner recipes…',
   cooking: 'Filter cooking recipes…',
+  research: 'Search items…',
 };
 
 async function main(): Promise<void> {
@@ -68,7 +77,9 @@ async function main(): Promise<void> {
   }
 
   const search = new SearchIndex(db);
-  const browseState: BrowseState = { query: '', categories: new Set() };
+  const browseState: BrowseState = {
+    query: '', categories: new Set(), browseAll: false,
+  };
   const refinerState: RecipeViewState = { query: '' };
   const cookingState: RecipeViewState = { query: '' };
 
@@ -149,6 +160,9 @@ async function main(): Promise<void> {
         break;
       case 'cooking':
         content.appendChild(renderRecipeTable(db, 'cook', cookingState));
+        break;
+      case 'research':
+        content.appendChild(renderResearch(db, current.root));
         break;
     }
   }

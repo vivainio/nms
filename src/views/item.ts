@@ -135,6 +135,69 @@ export function renderItem(db: Db, idx: number): HTMLElement {
     );
   }
 
+  // -- recharge ------------------------------------------------------------
+  const rc = db.recharge(idx);
+  if (rc) {
+    root.appendChild(
+      panel(
+        'Recharged by',
+        h('div', { class: 'result-count', text: `full charge ${fmt(rc.total)}` }),
+        ...rc.fuels.map((f) =>
+          h(
+            'div',
+            { class: 'recipe-row' },
+            stackLink(db, { idx: f.idx, qty: f.unitsForFull }),
+            h('span', {
+              class: 'op',
+              text: `${fmt(f.value)} charge each · ${fmt(f.unitsForFull)} for a full refill`,
+            }),
+          ),
+        ),
+      ),
+    );
+  }
+
+  const fuels = db.rechargesWhat(idx);
+  if (fuels.length) {
+    root.appendChild(
+      panel(
+        `Recharges (${fuels.length})`,
+        ...fuels.map((f) =>
+          h(
+            'div',
+            { class: 'recipe-row' },
+            stackLink(db, { idx: f.idx, qty: 1 }, false),
+            h('span', {
+              class: 'op',
+              text: `+${fmt(f.value)} of ${fmt(f.total)}`,
+            }),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // -- research trees this item appears in ---------------------------------
+  const trees = db.treesContaining(idx);
+  if (trees.length) {
+    root.appendChild(
+      panel(
+        'Research',
+        h(
+          'div',
+          { class: 'chips' },
+          ...trees.map((t) =>
+            h('a', {
+              class: 'chip',
+              href: `#/research/${t}`,
+              text: db.treeNames[t],
+            }),
+          ),
+        ),
+      ),
+    );
+  }
+
   // -- reverse: used to craft ----------------------------------------------
   const users = db.usedToCraft(idx);
   if (users.length) {
