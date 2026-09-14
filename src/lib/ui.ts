@@ -2,15 +2,25 @@
 
 import { h, fmt } from './dom';
 import type { Db, Recipe, Stack } from './db';
+import { glyphEl, glyphFor } from './glyphs';
 
 export function itemHref(db: Db, idx: number): string {
   return `#/item/${db.id(idx)}`;
 }
 
-/** Item icon, or a dashed placeholder when the dump has no art for it. */
-export function icon(db: Db, idx: number, cls = 'icon'): HTMLElement {
+/**
+ * Item icon. Around 2,600 items have no artwork upstream, so those get a glyph
+ * chosen from the item's group instead - a ship part, a room and a meal read
+ * differently at a glance, which an empty box did not.
+ */
+export function icon(db: Db, idx: number, cls = 'icon'): Element {
   const url = db.iconUrl(idx);
-  if (!url) return h('div', { class: `${cls} icon-ph` });
+  if (!url) {
+    // Deliberately not tinted with the item's colour: many of those are close
+    // to black (Starship Components are #1A2733), which disappears against the
+    // dark theme. The card's left border already carries the item colour.
+    return glyphEl(glyphFor(db, idx), cls);
+  }
   return h('img', {
     class: cls,
     src: url,

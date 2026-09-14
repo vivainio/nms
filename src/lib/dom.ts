@@ -47,6 +47,23 @@ export function h<K extends keyof HTMLElementTagNameMap>(
   return el;
 }
 
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/**
+ * Build an SVG element. Separate from `h` because SVG needs its own namespace -
+ * createElement would produce an inert HTMLUnknownElement that renders nothing.
+ */
+export function svg(
+  tag: string,
+  attrs: Record<string, string | number> = {},
+  ...children: Element[]
+): SVGElement {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
+  for (const c of children) el.appendChild(c);
+  return el;
+}
+
 export function clear(el: Element): void {
   el.replaceChildren();
 }

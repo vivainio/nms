@@ -242,11 +242,20 @@ footer.bottom {
   text-overflow: ellipsis;
 }
 
-.icon-ph {
-  width: 34px; height: 34px; flex: none;
-  border: 1px dashed var(--line-bright);
-  border-radius: 4px;
+/* Placeholder glyphs for items with no artwork. Sized to match the <img> they
+   stand in for, and muted so they never outshine a real icon next to them. */
+.glyph {
+  flex: none;
+  /* --fg-dim rather than --fg-faint: faint only reaches ~2.9:1 against the
+     light background, which is too washed out to read as a shape. */
+  color: var(--fg-dim);
+  opacity: 0.85;
 }
+.card .glyph { width: 34px; height: 34px; padding: 3px; }
+.detail-head .glyph { width: 72px; height: 72px; padding: 6px; }
+.ing .glyph, .cat-icons .glyph { width: 22px; height: 22px; }
+.cat-icons .glyph { width: 26px; height: 26px; }
+.card:hover .glyph { opacity: 1; }
 
 /* ---- item detail ------------------------------------------------------- */
 

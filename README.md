@@ -57,6 +57,14 @@ hotlinking them would pull tens of megabytes per page view off someone else's
 CDN. The mirror is 986 files totalling **4.4 MB** — 1.2% of the 351 MB of
 source PNGs.
 
+Only 1,121 of the 3,769 items have artwork. The other 2,648 get a placeholder
+glyph picked from the item's group — a ship part, a room, a meal and a damaged
+component are all distinguishable at a glance. 77% are matched on a group
+keyword and the rest fall back to their category; see
+[`src/lib/glyphs.ts`](src/lib/glyphs.ts). Glyphs are deliberately *not* tinted
+with the item's colour, because many of those are near-black (Starship
+Components are `#1A2733`) and vanish against the dark theme.
+
 One trap worth knowing if you touch the pipeline: each item carries both an
 `Icon` and a `CdnUrl` field, and **they disagree for ~5% of items**. `CdnUrl` is
 the authoritative one — sampling the CDN, every item with a `CdnUrl` returns
