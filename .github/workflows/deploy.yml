@@ -1,0 +1,68 @@
+name: Build and deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Allow one concurrent deployment; skip queued runs superseded by a newer push.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  # Re-encode the bundle from data/raw/ and diff it against the source, so a
+  # bad encoder change fails here rather than shipping silently.
+  data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Rebuild data bundle
+        run: python3 scripts/build_data.py
+      - name: Verify encoding is lossless
+        run: python3 scripts/verify_data.py
+      - name: Check committed bundle is up to date
+        run: |
+          if ! git diff --quiet -- public/data; then
+            echo "::error::public/data is stale - run scripts/build_data.py and commit"
+            git diff --stat -- public/data
+            exit 1
+          fi
+
+  build:
+    runs-on: ubuntu-latest
+    needs: data
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install
+        run: npm install
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    # Only publish from main; pull requests stop after build.
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

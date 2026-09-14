@@ -24,8 +24,8 @@ The data bundle is committed under `public/data/`, so the site runs immediately.
 
 Game data comes from [Assistant for No Man's Sky][anms], which extracts it from
 the game files and publishes it to npm as `assistantapps-nomanssky-info` (ISC).
-Item art is served from their CDN. This project is not affiliated with Hello
-Games or AssistantNMS.
+Item art is served from their CDN. See [NOTICE.md](NOTICE.md) for attribution
+and licensing. This project is not affiliated with Hello Games or AssistantApps.
 
 Currently pinned to **game version 6.01** (extracted 2025-08-28).
 
