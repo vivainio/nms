@@ -81,6 +81,13 @@ export interface Recipe {
 
 const i32 = (a: number[]) => Int32Array.from(a);
 
+/**
+ * Where mirrored icons live, relative to the site root. Hash routing means the
+ * document URL is always the site root, so a relative path resolves correctly
+ * whether the site is served from a domain root or a Pages subpath.
+ */
+const ICON_BASE = 'icons/';
+
 export class Db {
   readonly meta: Meta;
   readonly count: number;
@@ -105,7 +112,6 @@ export class Db {
 
   private readonly idLiteral: Record<string, string>;
   private readonly iconLiteral: Record<string, string>;
-  private readonly cdn: string;
 
   private readonly craftOff: Int32Array;
   private readonly craftIt: Int32Array;
@@ -129,7 +135,6 @@ export class Db {
     this.d = core.dicts;
     this.catKeys = core.dicts.cat;
     this.catLabels = core.catLabels;
-    this.cdn = core.meta.cdn;
 
     const it = core.items;
     this.names = it.n;
@@ -212,11 +217,20 @@ export class Db {
     return { cost: this.bpc[i], type: t };
   }
 
+  /**
+   * Local icon URL, or null when the item has no artwork.
+   *
+   * Icons are mirrored and downscaled into public/icons by
+   * scripts/mirror_icons.py - upstream serves ~348 KB PNGs that we render at
+   * 34-72px. Roughly 2,600 of the 3,769 items have no icon upstream at all;
+   * those return null so the UI draws a placeholder instead of requesting a
+   * URL that would 404.
+   */
   iconUrl(i: number): string | null {
     const lit = this.iconLiteral[String(i)];
-    if (lit !== undefined) return this.cdn + lit;
+    if (lit !== undefined) return ICON_BASE + lit.replace(/\.png$/, '.webp');
     if (this.icd[i] < 0) return null;
-    return `${this.cdn}${this.d.iconDir[this.icd[i]]}/${this.icn[i]}.png`;
+    return `${ICON_BASE}${this.d.iconDir[this.icd[i]]}/${this.icn[i]}.webp`;
   }
 
   indexOf(id: string): number | undefined { return this.byId.get(id); }

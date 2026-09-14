@@ -113,7 +113,7 @@ async function main(): Promise<void> {
         rel: 'noopener',
         target: '_blank',
       }),
-      ' · icons served from their CDN. Not affiliated with Hello Games.',
+      ' · item art mirrored from their CDN. Not affiliated with Hello Games.',
     ),
   );
 

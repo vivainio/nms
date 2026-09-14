@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from build_data import CATEGORIES, clean_description, num  # noqa: E402
+from build_data import CATEGORIES, clean_description, icon_path, num  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 RAW = ROOT / "data" / "raw"
@@ -89,8 +89,8 @@ def main() -> int:
                   f"{iid}: group mismatch")
             check(got["Colour"] == (it.get("Colour") or None),
                   f"{iid}: colour mismatch")
-            check(got["Icon"] == (it.get("Icon") or ""),
-                  f"{iid}: icon {got['Icon']!r} != {it.get('Icon')!r}")
+            check(got["Icon"] == icon_path(it),
+                  f"{iid}: icon {got['Icon']!r} != {icon_path(it)!r}")
             check(got["Value"] == num(it.get("BaseValueUnits")),
                   f"{iid}: value mismatch")
             check(got["Currency"] == (it.get("CurrencyType") or None),

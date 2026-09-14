@@ -26,8 +26,11 @@ PERFORMANCE OF THIS SOFTWARE.
 
 ## Item artwork
 
-Item icons are loaded at runtime from `cdn.nmsassistant.com`, operated by the
-same project. They are not redistributed in this repository.
+Item icons in `public/icons/` are mirrored from `cdn.nmsassistant.com`,
+operated by the same project, and downscaled to 96px WebP for use as thumbnails
+(the originals average ~348 KB and are rendered here at 34-72px). They are
+redistributed in this repository under the same ISC terms as the data package.
+The underlying artwork is the property of Hello Games.
 
 ## Trademarks
 

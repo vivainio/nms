@@ -35,10 +35,26 @@ To refresh:
 python3 scripts/fetch_data.py     # download latest dump into data/raw/
 python3 scripts/build_data.py     # encode into public/data/
 python3 scripts/verify_data.py    # prove the encoding is lossless
+python3 scripts/mirror_icons.py   # mirror icons (needs Pillow; resumable)
 ```
 
-The scripts use only the Python standard library — no Node or pip needed for
-the data pipeline. `data/raw/` is committed so builds are reproducible offline.
+The first three use only the Python standard library — no Node or pip needed.
+`data/raw/` is committed so builds are reproducible offline.
+
+### Icons
+
+Icons are mirrored into `public/icons/` and downscaled to 96px WebP. Upstream
+PNGs average **348 KB** (some exceed 1 MB) and are rendered here at 34–72px, so
+hotlinking them would pull tens of megabytes per page view off someone else's
+CDN. The mirror is 986 files totalling **4.4 MB** — 1.2% of the 351 MB of
+source PNGs.
+
+One trap worth knowing if you touch the pipeline: each item carries both an
+`Icon` and a `CdnUrl` field, and **they disagree for ~5% of items**. `CdnUrl` is
+the authoritative one — sampling the CDN, every item with a `CdnUrl` returns
+200, while items having only `Icon` 404 about 87% of the time. Only 1,121 of the
+3,769 items have artwork at all; the rest render a placeholder rather than
+requesting a URL that does not exist.
 
 ### Wire format
 

@@ -58,6 +58,22 @@ BROKEN_OPEN = re.compile(r"<(?:CATALYST|TECHNOLOGY|FUEL|PRODUCT|SPECIAL|COMMODIT
 SPLIT_ID = re.compile(r"([A-Za-z]+)(\d+)$")
 SPLIT_ICON = re.compile(r"([A-Za-z0-9_-]+)/(\d+)\.png$")
 
+CDN = "https://cdn.nmsassistant.com/"
+
+
+def icon_path(it) -> str:
+    """The item's icon path, or "" when it has no artwork.
+
+    The dump carries both `Icon` and `CdnUrl`, and they disagree for ~5% of
+    items. `CdnUrl` is the one that resolves: sampling the CDN, every item with
+    a `CdnUrl` returns 200, while items that only have `Icon` 404 roughly 87% of
+    the time. So `CdnUrl` is authoritative and a missing one means "no icon",
+    not "derive it from Icon" - doing that would point 2,600 items at URLs that
+    do not exist.
+    """
+    url = it.get("CdnUrl") or ""
+    return url[len(CDN):] if url.startswith(CDN) else ""
+
 
 class Dict_:
     """Interns strings, returning a stable index. -1 means absent."""
@@ -160,7 +176,7 @@ def main() -> int:
             col["idn"].append(-1)
             id_literal[str(i)] = iid
 
-        icon = it.get("Icon") or ""
+        icon = icon_path(it)
         mi = SPLIT_ICON.fullmatch(icon)
         if mi:
             col["icd"].append(d_icondir(mi.group(1)))
@@ -238,8 +254,9 @@ def main() -> int:
             "gameBuild": meta_raw.get("GameBuildNumber"),
             "generated": meta_raw.get("GeneratedDate"),
             "source": "AssistantNMS (assistantapps-nomanssky-info, ISC)",
-            "cdn": "https://cdn.nmsassistant.com/",
+            "cdn": CDN,
             "count": n,
+            "withIcon": sum(1 for v in col["icd"] if v >= 0) + len(icon_literal),
         },
         "catLabels": [label for _, _, label in CATEGORIES],
         "dicts": {
