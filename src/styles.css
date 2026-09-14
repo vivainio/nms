@@ -354,4 +354,30 @@ table.recipes td.time { font-family: var(--mono); font-size: 0.78rem; color: var
   .brand { width: 100%; }
   .detail-head .icon { width: 52px; height: 52px; }
   .grid { grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); }
+
+  /* iOS Safari zooms the whole page when focusing an input under 16px, which
+     leaves the layout scrolled sideways. 16px is the documented threshold. */
+  input.search { font-size: 16px; }
+}
+
+/* Touch devices: the 23-28px chips and tabs are too small to hit reliably.
+   Matches on narrow width OR a coarse pointer - width alone would miss tablets,
+   and pointer alone would silently do nothing on a device that misreports it. */
+@media (max-width: 620px), (pointer: coarse) {
+  .chip {
+    min-height: 40px;
+    padding-inline: 0.85rem;
+    display: inline-flex;
+    align-items: center;
+  }
+  nav.tabs a {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    padding-inline: 0.9rem;
+  }
+  .card { padding-block: 0.7rem; }
+  /* Recipe links sit inline in dense rows, so grow them vertically only. */
+  .ing { padding-block: 0.35rem; }
+  table.recipes td { padding-block: 0.6rem; }
 }
