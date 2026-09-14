@@ -318,6 +318,26 @@ def main() -> int:
     techtree = {"names": trees, "parent": t_parent, "item": t_item,
                 "label": t_label, "cost": t_cost, "root": t_root}
 
+    # ---- creature harvesting ----------------------------------------------
+    # HarvestType 1 carries a verb ("Collect Milk"); type 0 has none and means
+    # the item drops when the creature is killed.
+    d_creature, d_harvest = Dict_(), Dict_()
+    ch_item, ch_creature, ch_desc, ch_kind = [], [], [], []
+    ch_dropped = 0
+    for row in load("CreatureHarvest"):
+        j = index_of.get(row.get("ItemId"))
+        if j is None:
+            ch_dropped += 1
+            continue
+        ch_item.append(j)
+        ch_creature.append(d_creature(row.get("CreatureType")))
+        ch_desc.append(d_harvest(row.get("Description")))
+        ch_kind.append(num(row.get("HarvestType")))
+    if ch_dropped:
+        print(f"  CreatureHarvest: dropped {ch_dropped} unresolvable row(s)")
+    harvest = {"item": ch_item, "creature": ch_creature, "desc": ch_desc,
+               "kind": ch_kind}
+
     # ---- emit --------------------------------------------------------------
     core = {
         "meta": {
@@ -340,6 +360,8 @@ def main() -> int:
             "iconDir": d_icondir.values,
             "op": d_op.values,
             "treeCost": d_treecost.values,
+            "creature": d_creature.values,
+            "harvest": d_harvest.values,
         },
         "items": col,
         "idLiteral": id_literal,
@@ -349,6 +371,7 @@ def main() -> int:
         "cook": cook,
         "recharge": recharge,
         "techtree": techtree,
+        "harvest": harvest,
     }
 
     OUT.mkdir(parents=True, exist_ok=True)
@@ -367,8 +390,9 @@ def main() -> int:
     print(f"dicts      group={len(d_group.values)} colour={len(d_colour.values)} "
           f"op={len(d_op.values)}")
     print(f"escapes    id={len(id_literal)} icon={len(icon_literal)}")
-    print(f"-> core.json {kb('core.json'):8.1f} KB")
-    print(f"-> desc.json {kb('desc.json'):8.1f} KB")
+    print(f"harvest    {len(ch_item)} entries, {len(d_creature.values)} creature types")
+    print(f"-> core.json    {kb('core.json'):8.1f} KB")
+    print(f"-> desc.json    {kb('desc.json'):8.1f} KB")
     return 0
 
 

@@ -28,6 +28,7 @@ WANTED = [
     "TechnologyModule", "UpgradeModules", "ConstructedTechnology", "Buildings",
     "TradeItems", "ProceduralProducts", "Others", "Fishing",
     "Refinery", "NutrientProcessor", "TechTree",
+    "CreatureHarvest",
 ]
 
 # Language-independent tables under assets/data/. Recharge maps a technology to

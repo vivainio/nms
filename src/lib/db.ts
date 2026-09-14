@@ -14,6 +14,7 @@ export interface Meta {
   source: string;
   cdn: string;
   count: number;
+  withIcon?: number;
 }
 
 interface Dicts {
@@ -26,6 +27,8 @@ interface Dicts {
   iconDir: string[];
   op: string[];
   treeCost: string[];
+  creature: string[];
+  harvest: string[];
 }
 
 interface Columns {
@@ -61,6 +64,21 @@ export interface Core {
   cook: RecipeTable;
   recharge: RechargeTable;
   techtree: TechTreeTable;
+  harvest: HarvestTable;
+}
+
+interface HarvestTable {
+  item: number[];
+  creature: number[];
+  desc: number[];
+  kind: number[];
+}
+
+/** Where a harvestable item comes from. */
+export interface Harvest {
+  creature: string;
+  /** "Collect Milk" and similar; null when the item drops on death. */
+  method: string | null;
 }
 
 interface RechargeTable {
@@ -171,6 +189,8 @@ export class Db {
   private readonly fuelFor: Map<number, number[]> = new Map();
   /** root tree index -> its top-level entries, built on demand */
   private readonly treeCache = new Map<number, TreeEntry[]>();
+  /** item index -> how it is harvested from creatures */
+  private readonly harvestOf = new Map<number, Harvest[]>();
 
   /** id string -> item index */
   private readonly byId = new Map<string, number>();
@@ -208,6 +228,17 @@ export class Db {
     this.tables = { refine: core.refine, cook: core.cook };
     this.rc = core.recharge;
     this.tt = core.techtree;
+
+    const hv = core.harvest;
+    for (let k = 0; k < hv.item.length; k++) {
+      const entry: Harvest = {
+        creature: hv.creature[k] < 0 ? '?' : core.dicts.creature[hv.creature[k]],
+        method: hv.desc[k] < 0 ? null : core.dicts.harvest[hv.desc[k]],
+      };
+      const list = this.harvestOf.get(hv.item[k]);
+      if (list) list.push(entry);
+      else this.harvestOf.set(hv.item[k], [entry]);
+    }
 
     for (let i = 0; i < this.count; i++) this.byId.set(this.id(i), i);
 
@@ -450,6 +481,13 @@ export class Db {
     return [...out];
   }
 
+  // ---- creature harvesting -----------------------------------------------
+
+  /** Creatures this item can be harvested from. */
+  harvestedFrom(i: number): Harvest[] {
+    return this.harvestOf.get(i) ?? [];
+  }
+
   // ---- descriptions (lazy) ----------------------------------------------
 
   async loadDescriptions(base = 'data/'): Promise<void> {
@@ -465,38 +503,171 @@ export class Db {
   }
 }
 
-/** A node in the expanded crafting tree. */
+/** How a tree node's children are produced. */
+export type Via =
+  | { kind: 'craft' }
+  | {
+      kind: 'refine';
+      operation: string;
+      /** Refiner runs needed to reach the node's quantity. */
+      runs: number;
+      /** Output produced per run. */
+      outputPer: number;
+    };
+
+/** A node in the expanded production tree. */
 export interface TreeNode {
   idx: number;
   qty: number;
   children: TreeNode[];
+  /** How `children` produce this node; absent on leaves. */
+  via?: Via;
   /** Set when expansion stopped because the item repeats up its own branch. */
   cyclic?: boolean;
 }
 
+export interface TreeOptions {
+  /** Follow refiner recipes for items that have no crafting recipe. */
+  includeRefining?: boolean;
+  maxDepth?: number;
+  /**
+   * How many refiner steps to chain. Crafting chains are finite and meaningful,
+   * but almost everything can be refined from something else - Carbon from
+   * Fungal Mould, Fungal Mould from ... - so an unbounded walk wanders far past
+   * the point of being useful. One step answers the actual question ("what do I
+   * put in the refiner to get this?") and keeps the totals honest: stopping at
+   * Carbon is more useful than claiming you need Fungal Mould.
+   */
+  maxRefineDepth?: number;
+}
+
+/** Input cost per unit of output, using item value as a scarcity proxy. */
+function costPerUnit(db: Db, r: Recipe): number {
+  const total = r.inputs.reduce((t, i) => t + i.qty * db.value(i.idx), 0);
+  return total / (r.output.qty || 1);
+}
+
 /**
- * Expand an item's crafting recipe down to leaves.
+ * Pick which refiner recipe to expand when several produce the same item.
  *
- * `path` guards against an item appearing inside its own subtree - the game
- * data contains loops (notably in cooking), and without this the walk would
- * not terminate.
+ * Two traps here, both found by expanding Antimatter:
+ *
+ * 1. Ranking by output-per-run picks the *rarest* input (it chose Activated
+ *    Indium over Copper for Chromatic Metal). Item value proxies scarcity, so
+ *    we rank by input cost per unit of output instead.
+ *
+ * 2. Many refiner recipes are sidegrades rather than decompositions - the
+ *    atmospheric gases convert into each other in a loop (Nitrogen -> Radon ->
+ *    Sulphurine -> Nitrogen). Following those "downwards" exploded a single
+ *    Antimatter into 1,080 Nitrogen. A genuine decomposition builds something
+ *    valuable out of cheaper parts, so we only follow a recipe whose inputs
+ *    are worth no more than its output. That prunes the loops at their source.
+ */
+function bestRefine(db: Db, candidates: Recipe[]): Recipe | null {
+  const outputValue = candidates.length ? db.value(candidates[0].output.idx) : 0;
+  // With no value to compare against we cannot tell a decomposition from a
+  // sidegrade, so leave the item as a leaf rather than guess.
+  if (!outputValue) return null;
+
+  const worthwhile = candidates.filter(
+    (r) =>
+      r.inputs.every((i) => db.value(i.idx) > 0) &&
+      costPerUnit(db, r) <= outputValue,
+  );
+  if (!worthwhile.length) return null;
+
+  // Rank by the priciest material a recipe demands, cheapest first. Cost per
+  // unit of output alone recommends Activated Indium for Chromatic Metal - it
+  // yields 4 per unit so it "wins" on efficiency - but it only occurs in blue
+  // systems. Copper is a third of the price and found in far more places, and
+  // that is what a player actually wants to be told.
+  const dearestInput = (r: Recipe) =>
+    r.inputs.reduce((max, i) => Math.max(max, db.value(i.idx)), 0);
+
+  return worthwhile.sort((a, b) => {
+    const da = dearestInput(a);
+    const db_ = dearestInput(b);
+    if (da !== db_) return da - db_;
+    // Single-input recipes are simpler to actually run.
+    if (a.inputs.length !== b.inputs.length) return a.inputs.length - b.inputs.length;
+    const ca = costPerUnit(db, a);
+    const cb = costPerUnit(db, b);
+    if (ca !== cb) return ca - cb;
+    return b.output.qty - a.output.qty || a.k - b.k;
+  })[0];
+}
+
+/**
+ * Expand an item down to its base materials.
+ *
+ * Follows crafting recipes first, then refiner recipes - in No Man's Sky most
+ * of the depth lives in refining, so a craft-only walk stops almost
+ * immediately (Antimatter's ingredients are both refined, not crafted).
+ *
+ * `path` guards against an item appearing inside its own subtree. The game
+ * data contains loops, so without this the walk would not terminate.
  */
 export function craftTree(
   db: Db,
   idx: number,
   qty = 1,
-  maxDepth = 12,
+  opts: TreeOptions = {},
   path: ReadonlySet<number> = new Set(),
 ): TreeNode {
+  const { includeRefining = true, maxDepth = 12, maxRefineDepth = 1 } = opts;
+
   if (path.has(idx)) return { idx, qty, children: [], cyclic: true };
-  if (maxDepth <= 0 || !db.isCraftable(idx)) return { idx, qty, children: [] };
+  if (maxDepth <= 0) return { idx, qty, children: [] };
 
   const next = new Set(path);
   next.add(idx);
-  const children = db.craftOf(idx).map((ing) =>
-    craftTree(db, ing.idx, ing.qty * qty, maxDepth - 1, next),
-  );
-  return { idx, qty, children };
+  const recurse = (i: number, q: number, refineBudget: number) =>
+    craftTree(
+      db, i, q,
+      { includeRefining, maxDepth: maxDepth - 1, maxRefineDepth: refineBudget },
+      next,
+    );
+
+  if (db.isCraftable(idx)) {
+    return {
+      idx,
+      qty,
+      via: { kind: 'craft' },
+      // Crafting does not spend the refining budget.
+      children: db.craftOf(idx).map((ing) => recurse(ing.idx, ing.qty * qty, maxRefineDepth)),
+    };
+  }
+
+  if (includeRefining && maxRefineDepth > 0) {
+    // Skip recipes that consume the item they produce, and prefer ones whose
+    // inputs are not already above us - otherwise we would pick a loop when a
+    // straightforward route exists.
+    const producing = db
+      .recipesProducing('refine', idx)
+      .filter((r) => !r.inputs.some((i) => i.idx === idx));
+    const acyclic = producing.filter((r) => !r.inputs.some((i) => path.has(i.idx)));
+    const chosen = bestRefine(db, acyclic.length ? acyclic : producing);
+
+    if (chosen) {
+      const outputPer = chosen.output.qty || 1;
+      const runs = Math.ceil(qty / outputPer);
+      return {
+        idx,
+        qty,
+        via: {
+          kind: 'refine',
+          operation: chosen.operation,
+          runs,
+          outputPer,
+        },
+        children: chosen.inputs.map((i) =>
+          recurse(i.idx, i.qty * runs, maxRefineDepth - 1),
+        ),
+      };
+    }
+  }
+
+  return { idx, qty, children: [] };
 }
 
 /** Sum a crafting tree's leaves into a raw-material shopping list. */

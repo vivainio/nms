@@ -8,9 +8,11 @@ Static site, no backend, no framework.
 - **Category landing** — 13 categories with item and craftable counts, so
   building blueprints (882 of them) and technology are one tap away.
 - **Browse + search** all 3,769 items, filterable by category.
-- **Item detail** with the full crafting tree expanded down to base materials,
-  plus a summed "total base materials" list.
+- **Item detail** with a full breakdown expanded down to base materials, through
+  both crafting *and* refining, plus a summed "total base materials" list.
+  Antimatter resolves to 50 Copper + 40 Carbon.
 - **Reverse lookup** — every recipe that consumes the item you're looking at.
+- **Creature harvesting** — which creatures yield an item, and how.
 - **Refiner and cooking tables** with all 357 refiner and 1,321 cooking recipes.
 - **Recharge info** — what refuels a technology, how much charge each unit
   gives, and how many units a full refill takes; plus the reverse ("what does
@@ -83,6 +85,30 @@ page, so browse and the recipe tables never fetch them.
 `scripts/verify_data.py` decodes the bundle and diffs every field of every item
 and recipe against `data/raw/`, so the compression can't silently drop data.
 The decoder lives in [`src/lib/db.ts`](src/lib/db.ts).
+
+### Choosing a refiner route
+
+Most depth in No Man's Sky lives in refining, not crafting, so the breakdown
+follows refiner recipes too. That needs an opinion about *which* recipe to show,
+since 25 recipes produce Chromatic Metal. Three rules, each added because the
+naive version produced something wrong:
+
+1. **Only follow value-adding steps.** Many refiner recipes are sidegrades, not
+   decompositions — the atmospheric gases convert into each other in a loop
+   (Nitrogen → Radon → Sulphurine → Nitrogen). Following those downwards turned
+   one Antimatter into 1,080 Nitrogen. A real decomposition builds something out
+   of cheaper parts, so a recipe is only followed when its inputs are worth no
+   more than its output.
+2. **Rank by the priciest input, cheapest first.** Ranking by output-per-run
+   picks the *rarest* material: it recommended Activated Indium over Copper for
+   Chromatic Metal. Item value is a decent scarcity proxy.
+3. **Stop after one refiner step.** Almost anything can be refined from
+   something else — Carbon from Fungal Mould, and onwards — so an unbounded walk
+   drifts well past useful. One step keeps the totals honest: stopping at Carbon
+   beats claiming you need Fungal Mould.
+
+Crafting chains are finite and meaningful, so they are followed to the end
+regardless; only refining is capped. A toggle on the page turns refining off.
 
 ## Layout
 

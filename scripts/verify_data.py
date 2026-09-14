@@ -210,6 +210,26 @@ def main() -> int:
         p = tt["parent"][k]
         check(p == -1 or 0 <= p < k, f"techtree[{k}]: parent {p} out of range")
 
+    # -- creature harvesting -------------------------------------------------
+    hv = core["harvest"]
+    raw_hv = json.loads((RAW / "CreatureHarvest.json").read_text(encoding="utf-8"))
+    expected_hv = [r for r in raw_hv if r.get("ItemId") in src_by_id]
+    check(len(hv["item"]) == len(expected_hv),
+          f"harvest: {len(hv['item'])} encoded vs {len(expected_hv)} expected")
+    creatures, harvests = core["dicts"]["creature"], core["dicts"]["harvest"]
+    for k, r in enumerate(expected_hv):
+        if k >= len(hv["item"]):
+            break
+        check(item_id(hv["item"][k]) == r["ItemId"], f"harvest[{k}]: item mismatch")
+        got_c = creatures[hv["creature"][k]] if hv["creature"][k] >= 0 else None
+        check(got_c == (r.get("CreatureType") or None),
+              f"harvest[{k}]: creature mismatch")
+        got_d = harvests[hv["desc"][k]] if hv["desc"][k] >= 0 else None
+        check(got_d == (r.get("Description") or None),
+              f"harvest[{k}]: description mismatch")
+        check(hv["kind"][k] == num(r.get("HarvestType")),
+              f"harvest[{k}]: harvest type mismatch")
+
     # -- report --------------------------------------------------------------
     if errors:
         print(f"FAILED - {len(errors)} problem(s):")
@@ -225,6 +245,7 @@ def main() -> int:
     print(f"  {nref} refiner + {ncook} cooking recipes")
     print(f"  {len(expected_rc)} recharge entries")
     print(f"  {len(tt['names'])} research trees, {len(expected_nodes)} nodes")
+    print(f"  {len(expected_hv)} creature harvest entries")
     return 0
 
 

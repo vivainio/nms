@@ -190,6 +190,7 @@ async function main(): Promise<void> {
       }
       if (parseRoute(location.hash).name !== 'item') return;
     }
+
     renderContent();
   }
 

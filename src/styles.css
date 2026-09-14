@@ -360,6 +360,40 @@ section.panel > h2 {
   border-radius: var(--radius);
 }
 
+/* ---- toggles, static chips -------------------------------------------- */
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.8rem;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--fg-dim);
+  cursor: pointer;
+  user-select: none;
+}
+.toggle input { accent-color: var(--accent); cursor: pointer; }
+
+/* A chip showing information rather than offering a filter. */
+.chip.static { cursor: default; color: var(--fg-dim); }
+.chip.static:hover { border-color: var(--line-bright); }
+.chip.static b { color: var(--fg); font-weight: 600; }
+.harvest-method { color: var(--fg-faint); }
+
+.refine-note { color: var(--cyan); }
+
+.filter-label {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-faint);
+  align-self: center;
+  margin-right: 0.15rem;
+  min-width: 2.6rem;
+}
+
 /* ---- tables ------------------------------------------------------------ */
 
 .table-wrap { overflow-x: auto; }

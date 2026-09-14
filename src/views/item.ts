@@ -7,8 +7,24 @@ import {
   icon, itemCard, stackLink, recipeRow, panel, empty,
 } from '../lib/ui';
 
+/** Sticky across navigations so the choice holds while browsing. */
+let includeRefining = true;
+
 function stat(label: string, value: string): HTMLElement {
   return h('span', { class: 'stat' }, `${label} `, h('b', { text: value }));
+}
+
+function viaNote(n: TreeNode): HTMLElement | null {
+  if (!n.via) return null;
+  if (n.via.kind === 'craft') {
+    return h('span', { class: 'leaf-note', text: '· craft' });
+  }
+  const { operation, runs, outputPer } = n.via;
+  const runText = runs === 1 ? '1 run' : `${fmt(runs)} runs`;
+  return h('span', {
+    class: 'leaf-note refine-note',
+    text: `· refine · ${operation || 'refiner'} · ${runText} × ${fmt(outputPer)}`,
+  });
 }
 
 function treeList(db: Db, nodes: TreeNode[]): HTMLElement {
@@ -21,7 +37,8 @@ function treeList(db: Db, nodes: TreeNode[]): HTMLElement {
         null,
         stackLink(db, { idx: n.idx, qty: n.qty }),
         n.cyclic && h('span', { class: 'cyc', text: '(cycle — stopped)' }),
-        !n.cyclic && n.children.length === 0 && db.isCraftable(n.idx) === false
+        viaNote(n),
+        !n.cyclic && n.children.length === 0
           ? h('span', { class: 'leaf-note', text: '· base' })
           : null,
         n.children.length > 0 && treeList(db, n.children),
@@ -77,45 +94,71 @@ export function renderItem(db: Db, idx: number): HTMLElement {
   // -- crafted from --------------------------------------------------------
   const ingredients = db.craftOf(idx);
   if (ingredients.length) {
-    const direct = h(
-      'div',
-      { class: 'recipe-row' },
-      ...ingredients.flatMap((s, i) => [
-        i > 0 ? h('span', { class: 'plus', text: '+' }) : null,
-        stackLink(db, s),
-      ]),
-      h('span', { class: 'arrow', text: '→' }),
-      stackLink(db, { idx, qty: 1 }, false),
-    );
-
-    const tree = craftTree(db, idx);
-    const hasDepth = tree.children.some((c) => c.children.length > 0);
-    const totals = [...rawTotals(tree)].sort((a, b) => b[1] - a[1]);
-
     root.appendChild(
       panel(
         'Crafted from',
-        direct,
-        hasDepth &&
-          h(
-            'div',
-            { style: 'margin-top:0.9rem' },
-            h('div', { class: 'result-count', text: 'full breakdown' }),
-            h('div', { class: 'tree' }, treeList(db, tree.children)),
-          ),
-        hasDepth &&
-          h(
-            'div',
-            { style: 'margin-top:0.9rem' },
-            h('div', { class: 'result-count', text: 'total base materials' }),
-            h(
-              'div',
-              { class: 'totals' },
-              ...totals.map(([i, qty]) => stackLink(db, { idx: i, qty })),
-            ),
-          ),
+        h(
+          'div',
+          { class: 'recipe-row' },
+          ...ingredients.flatMap((s, i) => [
+            i > 0 ? h('span', { class: 'plus', text: '+' }) : null,
+            stackLink(db, s),
+          ]),
+          h('span', { class: 'arrow', text: '→' }),
+          stackLink(db, { idx, qty: 1 }, false),
+        ),
       ),
     );
+  }
+
+  // -- full breakdown, through crafting and refining ------------------------
+  // Only worth showing when something expands more than one level; otherwise
+  // it just repeats the recipe row above.
+  const body = h('div');
+  const renderBreakdown = () => {
+    body.replaceChildren();
+    const tree = craftTree(db, idx, 1, { includeRefining });
+    if (!tree.children.some((c) => c.children.length > 0)) {
+      body.appendChild(
+        empty(
+          includeRefining
+            ? 'Everything here is a base material.'
+            : 'No further crafting steps. Enable refining to expand further.',
+        ),
+      );
+      return;
+    }
+    const totals = [...rawTotals(tree)].sort((a, b) => b[1] - a[1]);
+    body.appendChild(h('div', { class: 'tree' }, treeList(db, tree.children)));
+    body.appendChild(
+      h(
+        'div',
+        { style: 'margin-top:0.9rem' },
+        h('div', { class: 'result-count', text: 'total base materials' }),
+        h(
+          'div',
+          { class: 'totals' },
+          ...totals.map(([i, qty]) => stackLink(db, { idx: i, qty })),
+        ),
+      ),
+    );
+  };
+
+  const probe = craftTree(db, idx, 1, { includeRefining: true });
+  if (probe.children.some((c) => c.children.length > 0)) {
+    const toggle = h('label', { class: 'toggle' },
+      h('input', {
+        type: 'checkbox',
+        checked: includeRefining,
+        onchange: (e: Event) => {
+          includeRefining = (e.target as HTMLInputElement).checked;
+          renderBreakdown();
+        },
+      }),
+      h('span', { text: 'follow refiner recipes' }),
+    );
+    renderBreakdown();
+    root.appendChild(panel('Full breakdown', toggle, body));
   }
 
   // -- refiner / cooking ---------------------------------------------------
@@ -171,6 +214,32 @@ export function renderItem(db: Db, idx: number): HTMLElement {
               class: 'op',
               text: `+${fmt(f.value)} of ${fmt(f.total)}`,
             }),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // -- creature harvesting -------------------------------------------------
+  const harvests = db.harvestedFrom(idx);
+  if (harvests.length) {
+    root.appendChild(
+      panel(
+        `Harvested from (${harvests.length})`,
+        h(
+          'div',
+          { class: 'chips' },
+          ...harvests.map((hv) =>
+            h(
+              'span',
+              { class: 'chip static' },
+              h('b', { text: hv.creature }),
+              // No method means it drops when the creature is killed.
+              h('span', {
+                class: 'harvest-method',
+                text: hv.method ? ` · ${hv.method}` : ' · on death',
+              }),
+            ),
           ),
         ),
       ),
